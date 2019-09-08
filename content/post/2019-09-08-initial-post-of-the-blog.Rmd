@@ -1,0 +1,26 @@
+---
+title: Initial Post of the Blog
+draft: false
+author: Chris Schulz
+date: '2019-09-08'
+slug: beginning-of-the-blog
+categories: []
+tags: []
+thumbnailImagePosition: left
+thumbnailImage: https://emojipedia-us.s3.dualstack.us-west-1.amazonaws.com/thumbs/160/emoji-one/44/waving-hand-sign_1f44b.png
+metaAlignment: center
+coverMeta: out
+---
+
+![](http://blog.echemusic.com/wp-content/uploads/helloworld.gif)
+
+
+# What's this about?
+
+The purpose of this blog will be to tackle some real-life problems I have come across. 
+
+# How is will the blog be structured?
+
+By rule of thumbs, every blog post will be cut down to 5 to 10 minutes reading time.   
+
+Therefore, often a specific topic will be covered by a series of posts.
