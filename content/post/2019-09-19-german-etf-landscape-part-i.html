@@ -1,0 +1,602 @@
+---
+title: German ETF Landscape Part I
+draft: false
+author: Chris Schulz
+date: '2019-09-19'
+slug: german-etf-landscape-part-i
+categories: []
+tags:
+  - ETF
+thumbnailImagePosition: left
+thumbnailImage: https://www.biallo.de/fileadmin/_processed_/3/b/ETFScreen_Carlos_Amarillo_shu_faedb81b35.jpg
+metaAlignment: center
+coverMeta: out
+---
+
+
+
+<div class="figure">
+<img src="https://cms.boerse-frankfurt.de/bf_files/Bilder/Thementexte/scrabble-etf-975x198.jpg" alt="Source: Boerse Frankfurt" />
+<p class="caption">Source: Boerse Frankfurt</p>
+</div>
+<div id="structure" class="section level1">
+<h1>Structure</h1>
+<p>This is the first article of a series of posts related to Exchange Traded Funds (ETFs).</p>
+</div>
+<div id="motivation" class="section level1">
+<h1>Motivation</h1>
+<p>I have encountered tremendous interest in this topic from various people without a financial background who assess long-term and low frequent investment opportunities.</p>
+</div>
+<div id="purpose" class="section level1">
+<h1>Purpose</h1>
+<p>This initial post will cover key ETF characteristics and terminology. Further, it presents an overview of available ETFs for german domiciled private investors.</p>
+</div>
+<div id="terminology" class="section level1">
+<h1>Terminology</h1>
+<div id="exchange-traded-fund-etf" class="section level2">
+<h2>Exchange Traded Fund (ETF)</h2>
+<p>An ETF is a <strong>basket of securities</strong> that typically track a specific market index and each ETF is <strong>traded at stock exchanges</strong>.</p>
+<p>The key to understanding the unique structure of ETFs is understanding the underlying core concept called <strong>Creation/Redemption Mechanism</strong>.</p>
+<p>The crucial player in the entire <strong>Creation/Redemption Mechanism</strong> is the so-called <strong>Authorised Participant (AP)</strong>. Let’s introduce <strong>AP</strong> first.</p>
+<div id="authorised-participant-ap" class="section level3">
+<h3>Authorised Participant (AP)</h3>
+<p>An <strong>AP</strong> is an entity chosen by an ETF’s sponsor to undertake the responsibility of obtaining the underlying assets needed to create an ETF.</p>
+<p><strong>APs</strong> are the only players with the permission to generate new ETF shares or to redeem ETF shares.</p>
+<p><strong>APs</strong> are typically large institutional organizations, such as market makers.</p>
+</div>
+<div id="creationredemption-mechanism" class="section level3">
+<h3>Creation/Redemption Mechanism</h3>
+<p>The process takes place in the <strong>primary market</strong> between the ETF itself and the <strong>AP</strong>.</p>
+<p><strong>Creation</strong> of shares happens when new investments are made to the ETF, and the ETF issues shares that will trade on the exchange with existing shares.</p>
+<p><strong>Redemption</strong> of shares is when shares are exchanged for their cash value with the ETF.</p>
+<p align="center">
+<img src="/post/2019-09-19-german-etf-landscape-part-i_files/rba.gif" alt="Source: RBA" width="800" height="350" />
+</p>
+<p>The <em>AP</em> acts in case of arbitrage opportunities when the value of the ETF shares and the value of the underlying <strong>basket of securities</strong> differ in prices. This ensures that ETFs are traded at <strong>Fair Value</strong>.</p>
+<p>In a nutshell, the beauty of this mechanism is:</p>
+<ul>
+<li>removing real costs</li>
+<li>improving tax efficiency</li>
+<li>increasing transparency</li>
+<li>enhancing liquidity</li>
+<li>fascilitating access to complicated underlying portfolios</li>
+</ul>
+<p>The video below illustrates how the ETF <strong>Creation/Redemption Mechanism</strong> works:</p>
+{{% youtube "2-Voq-ivplg" %}}
+<p>Alright, let’s apply the theory with real world data!</p>
+</div>
+</div>
+</div>
+<div id="xetra-etf-universe" class="section level1">
+<h1>XETRA ETF Universe</h1>
+<p>XETRA is the reference market for German equities and <strong>ETFs</strong>. The good news is that XETRA publishes an overview of all traded ETFs on regular basis. The bad news is that their APIs are currently not free of charge for usage.</p>
+<pre class="r"><code>library(magrittr)
+library(dplyr)
+library(readxl)
+library(stringr)
+library(janitor)
+library(ggplot2)
+library(DataExplorer)
+library(tidyquant)
+library(skimr)
+library(gt)</code></pre>
+<p>A complete list of all tradable ETFs is avialable at: <a href="https://www.xetra.com/xetra-en/instruments/etf-exchange-traded-funds/list-of-tradable-etfs">List of tradable ETFs</a>.</p>
+<p>Let’s download the data and take a look at it:</p>
+<pre class="r"><code>import.xetra &lt;- function(url = url) {
+  # imports information on all tradable etfs on xetra
+  
+  download.file(url = url, destfile = here::here(&#39;resources&#39;, &#39;xetra.xls&#39;))
+  
+  df &lt;- readxl::read_excel(here::here(&#39;resources&#39;, &#39;xetra.xls&#39;)) %&gt;% 
+    janitor::clean_names() %&gt;% 
+    janitor::remove_empty(c(&#39;rows&#39;, &#39;cols&#39;)) %&gt;% 
+    dplyr::mutate(max_spread = (stringr::str_remove_all(max_spread, &#39;%&#39;))) %&gt;%
+    dplyr::mutate_at(.vars = c(&#39;max_spread&#39;, &#39;order_book_turnover_mn&#39;, &#39;au_m_mn&#39;),
+                     .funs = stringr::str_replace_all, pattern = &#39;,&#39;, replacement = &#39;.&#39;) %&gt;% 
+    dplyr::mutate_at(.vars = c(&#39;max_spread&#39;, &#39;order_book_turnover_mn&#39;, &#39;au_m_mn&#39;), .funs = as.double) %&gt;%
+    dplyr::mutate_at(.vars = c(&#39;product_family&#39;, &#39;use_of_profits&#39;, &#39;replication_method&#39;, &#39;fund_currency&#39;, &#39;trading_currency&#39;),
+                     .funs = as.factor) %&gt;%
+    dplyr::select(-number, -dplyr::starts_with(&#39;i_nav_&#39;)) %&gt;%
+    dplyr::rename(symbol = reuters_ric,
+                  etf    = xtf_exchange_traded_funds,
+                  ter    = total_expense_ratio_ter_in_percent,
+                  aum = au_m_mn)
+    
+  
+  print(paste0(&#39;Number of ETFs available on XETRA: &#39;, nrow(df)))
+  
+  return(df)
+}
+
+df.xetra &lt;- import.xetra(url = &#39;https://www.xetra.com/resource/blob/1553442/f8699acd21b27e519e16657cef30e820/data/Master_DataSheet_Download.xls&#39;)</code></pre>
+<pre><code>## [1] &quot;Number of ETFs available on XETRA: 1454&quot;</code></pre>
+<pre class="r"><code>df.xetra %&gt;% glimpse()</code></pre>
+<pre><code>## Observations: 1,454
+## Variables: 22
+## $ etf                       &lt;chr&gt; &quot;iShares STOXX Europe 50 UCITS ETF&quot;, &quot;…
+## $ isin                      &lt;chr&gt; &quot;IE0008470928&quot;, &quot;IE0008471009&quot;, &quot;DE000…
+## $ product_family            &lt;fct&gt; iShares, iShares, iShares, iShares, iS…
+## $ xetra_symbol              &lt;chr&gt; &quot;EUN1&quot;, &quot;EUN2&quot;, &quot;EXS1&quot;, &quot;EXW3&quot;, &quot;EXW1&quot;…
+## $ symbol                    &lt;chr&gt; &quot;EUN1.DE&quot;, &quot;EUN2.DE&quot;, &quot;EXS1.DE&quot;, &quot;EXW3…
+## $ bloomberg_code            &lt;chr&gt; &quot;EUN1 GY&quot;, &quot;EUN2 GY&quot;, &quot;DAXEX GY&quot;, &quot;SX5…
+## $ listing_date              &lt;dttm&gt; 2000-04-11, 2000-04-11, 2001-01-03, 2…
+## $ denomination_base         &lt;chr&gt; &quot;1/100&quot;, &quot;1/100&quot;, &quot;1/100&quot;, &quot;1/100&quot;, &quot;1…
+## $ management_fee_in_percent &lt;dbl&gt; 0.0035, 0.0016, 0.0016, 0.0051, 0.0016…
+## $ ter                       &lt;dbl&gt; 0.0035, 0.0016, 0.0016, 0.0051, 0.0016…
+## $ use_of_profits            &lt;fct&gt; Distributing, Distributing, Accumulati…
+## $ replication_method        &lt;fct&gt; Full Replication, Full Replication, Fu…
+## $ fund_currency             &lt;fct&gt; EUR, EUR, EUR, EUR, EUR, CHF, EUR, EUR…
+## $ trading_currency          &lt;fct&gt; EUR, EUR, EUR, EUR, EUR, EUR, EUR, EUR…
+## $ mqv                       &lt;chr&gt; &quot;100.000 EUR&quot;, &quot;100.000 EUR&quot;, &quot;100.000…
+## $ max_spread                &lt;dbl&gt; 0.0100, 0.0100, 0.0100, 0.0100, 0.0100…
+## $ benchmark                 &lt;chr&gt; &quot;STOXX Europe 50 Index&quot;, &quot;EURO STOXX 5…
+## $ date                      &lt;dttm&gt; 2019-07-31, 2019-07-31, 2019-07-31, 2…
+## $ order_book_turnover_mn    &lt;dbl&gt; 22.81, 105.60, 876.54, 2.81, 340.56, 6…
+## $ aum                       &lt;dbl&gt; 641.84, 4057.34, 6309.17, 124.71, 6725…
+## $ xlm_100k                  &lt;dbl&gt; 5.56, 4.23, 3.07, 6.77, 3.17, 10.30, 6…
+## $ homepage_issuer           &lt;chr&gt; &quot;www.ishares.com&quot;, &quot;www.ishares.com&quot;, …</code></pre>
+<p>In total 1454 ETFs are available and their characteristics are described within 22.</p>
+<pre class="r"><code>DataExplorer::plot_intro(data = df.xetra, title = &#39;Xetra Overview&#39;, ggtheme = tidyquant::theme_tq())</code></pre>
+<p><img src="/post/2019-09-19-german-etf-landscape-part-i_files/figure-html/ov-1.png" width="672" /></p>
+<pre class="r"><code>DataExplorer::plot_missing(data = df.xetra, title = &#39;Xetra Missing Values&#39;, ggtheme = tidyquant::theme_tq())</code></pre>
+<p><img src="/post/2019-09-19-german-etf-landscape-part-i_files/figure-html/unnamed-chunk-2-1.png" width="672" /></p>
+<p>Apart from the attribute <em>denomination base</em> all features are nearly complete.</p>
+<pre class="r"><code>DataExplorer::plot_bar(data = df.xetra %&gt;% select(product_family,
+                                               use_of_profits,
+                                               replication_method,
+                                               fund_currency, trading_currency),
+                       title = &#39;Frequency Distribution of Discrete Variables&#39;,
+                       ggtheme = tidyquant::theme_tq())</code></pre>
+<p><img src="/post/2019-09-19-german-etf-landscape-part-i_files/figure-html/unnamed-chunk-3-1.png" width="672" /></p>
+<pre class="r"><code>DataExplorer::plot_histogram(df.xetra, title = &#39;Histogram of Continuous Variables&#39;, ncol = 3, ggtheme = tidyquant::theme_tq())</code></pre>
+<p><img src="/post/2019-09-19-german-etf-landscape-part-i_files/figure-html/unnamed-chunk-4-1.png" width="672" /></p>
+<pre class="r"><code>DataExplorer::plot_correlation(df.xetra, type = &#39;continuous&#39;,
+                               title = &#39;Correlation of Continuous Variables&#39;,
+                               ggtheme = tidyquant::theme_tq(),
+                               cor_args = list(&quot;use&quot; = &quot;pairwise.complete.obs&quot;))</code></pre>
+<p><img src="/post/2019-09-19-german-etf-landscape-part-i_files/figure-html/unnamed-chunk-5-1.png" width="672" /></p>
+<pre class="r"><code>df.xetra %&gt;%
+  select_if(is.numeric) %&gt;%
+  tidyr::drop_na() %&gt;%
+  skimr::skim_to_wide() %&gt;% 
+  select(-c(type, missing, complete, n)) %&gt;% 
+  gt::gt() %&gt;% 
+  gt::tab_header(title = &quot;Numeric Variables&quot;)</code></pre>
+<style>html {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Helvetica Neue', 'Fira Sans', 'Droid Sans', Arial, sans-serif;
+}
+
+#txglsgeysb .gt_table {
+  display: table;
+  border-collapse: collapse;
+  margin-left: auto;
+  margin-right: auto;
+  color: #333333;
+  font-size: 16px;
+  background-color: #FFFFFF;
+  /* table.background.color */
+  width: auto;
+  /* table.width */
+  border-top-style: solid;
+  /* table.border.top.style */
+  border-top-width: 2px;
+  /* table.border.top.width */
+  border-top-color: #A8A8A8;
+  /* table.border.top.color */
+  border-bottom-style: solid;
+  /* table.border.bottom.style */
+  border-bottom-width: 2px;
+  /* table.border.bottom.width */
+  border-bottom-color: #A8A8A8;
+  /* table.border.bottom.color */
+}
+
+#txglsgeysb .gt_heading {
+  background-color: #FFFFFF;
+  /* heading.background.color */
+  border-bottom-color: #FFFFFF;
+}
+
+#txglsgeysb .gt_title {
+  color: #333333;
+  font-size: 125%;
+  /* heading.title.font.size */
+  padding-top: 4px;
+  /* heading.top.padding - not yet used */
+  padding-bottom: 4px;
+  border-bottom-color: #FFFFFF;
+  border-bottom-width: 0;
+}
+
+#txglsgeysb .gt_subtitle {
+  color: #333333;
+  font-size: 85%;
+  /* heading.subtitle.font.size */
+  padding-top: 0;
+  padding-bottom: 4px;
+  /* heading.bottom.padding - not yet used */
+  border-top-color: #FFFFFF;
+  border-top-width: 0;
+}
+
+#txglsgeysb .gt_bottom_border {
+  border-bottom-style: solid;
+  /* heading.border.bottom.style */
+  border-bottom-width: 2px;
+  /* heading.border.bottom.width */
+  border-bottom-color: #D3D3D3;
+  /* heading.border.bottom.color */
+}
+
+#txglsgeysb .gt_column_spanner {
+  border-bottom-style: solid;
+  border-bottom-width: 2px;
+  border-bottom-color: #D3D3D3;
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+#txglsgeysb .gt_col_heading {
+  color: #333333;
+  background-color: #FFFFFF;
+  /* column_labels.background.color */
+  font-size: 16px;
+  /* column_labels.font.size */
+  font-weight: initial;
+  /* column_labels.font.weight */
+  vertical-align: middle;
+  padding: 5px;
+  margin: 10px;
+  overflow-x: hidden;
+}
+
+#txglsgeysb .gt_columns_top_border {
+  border-top-style: solid;
+  border-top-width: 2px;
+  border-top-color: #D3D3D3;
+}
+
+#txglsgeysb .gt_columns_bottom_border {
+  border-bottom-style: solid;
+  border-bottom-width: 2px;
+  border-bottom-color: #D3D3D3;
+}
+
+#txglsgeysb .gt_sep_right {
+  border-right: 5px solid #FFFFFF;
+}
+
+#txglsgeysb .gt_group_heading {
+  padding: 8px;
+  /* row_group.padding */
+  color: #333333;
+  background-color: #FFFFFF;
+  /* row_group.background.color */
+  font-size: 16px;
+  /* row_group.font.size */
+  font-weight: initial;
+  /* row_group.font.weight */
+  border-top-style: solid;
+  /* row_group.border.top.style */
+  border-top-width: 2px;
+  /* row_group.border.top.width */
+  border-top-color: #D3D3D3;
+  /* row_group.border.top.color */
+  border-bottom-style: solid;
+  /* row_group.border.bottom.style */
+  border-bottom-width: 2px;
+  /* row_group.border.bottom.width */
+  border-bottom-color: #D3D3D3;
+  /* row_group.border.bottom.color */
+  vertical-align: middle;
+}
+
+#txglsgeysb .gt_empty_group_heading {
+  padding: 0.5px;
+  color: #333333;
+  background-color: #FFFFFF;
+  /* row_group.background.color */
+  font-size: 16px;
+  /* row_group.font.size */
+  font-weight: initial;
+  /* row_group.font.weight */
+  border-top-style: solid;
+  /* row_group.border.top.style */
+  border-top-width: 2px;
+  /* row_group.border.top.width */
+  border-top-color: #D3D3D3;
+  /* row_group.border.top.color */
+  border-bottom-style: solid;
+  /* row_group.border.bottom.style */
+  border-bottom-width: 2px;
+  /* row_group.border.bottom.width */
+  border-bottom-color: #D3D3D3;
+  /* row_group.border.bottom.color */
+  vertical-align: middle;
+}
+
+#txglsgeysb .gt_striped {
+  background-color: #8080800D;
+}
+
+#txglsgeysb .gt_from_md > :first-child {
+  margin-top: 0;
+}
+
+#txglsgeysb .gt_from_md > :last-child {
+  margin-bottom: 0;
+}
+
+#txglsgeysb .gt_row {
+  padding: 8px;
+  /* row.padding */
+  margin: 10px;
+  border-bottom-style: solid;
+  border-bottom-width: thin;
+  border-bottom-color: #D3D3D3;
+  vertical-align: middle;
+  overflow-x: hidden;
+}
+
+#txglsgeysb .gt_stub {
+  border-right-style: solid;
+  border-right-width: 2px;
+  border-right-color: #D3D3D3;
+  padding-left: 12px;
+}
+
+#txglsgeysb .gt_summary_row {
+  color: #333333;
+  background-color: #FFFFFF;
+  /* summary_row.background.color */
+  padding: 8px;
+  /* summary_row.padding */
+  text-transform: inherit;
+  /* summary_row.text_transform */
+}
+
+#txglsgeysb .gt_grand_summary_row {
+  color: #333333;
+  background-color: #FFFFFF;
+  /* grand_summary_row.background.color */
+  padding: 8px;
+  /* grand_summary_row.padding */
+  text-transform: inherit;
+  /* grand_summary_row.text_transform */
+}
+
+#txglsgeysb .gt_first_summary_row {
+  border-top-style: solid;
+  border-top-width: 2px;
+  border-top-color: #D3D3D3;
+}
+
+#txglsgeysb .gt_first_grand_summary_row {
+  border-top-style: double;
+  border-top-width: 6px;
+  border-top-color: #D3D3D3;
+}
+
+#txglsgeysb .gt_table_body {
+  border-top-style: solid;
+  /* table_body.border.top.style */
+  border-top-width: 2px;
+  /* table_body.border.top.width */
+  border-top-color: #D3D3D3;
+  /* table_body.border.top.color */
+  border-bottom-style: solid;
+  /* table_body.border.bottom.style */
+  border-bottom-width: 2px;
+  /* table_body.border.bottom.width */
+  border-bottom-color: #D3D3D3;
+  /* table_body.border.bottom.color */
+}
+
+#txglsgeysb .gt_footnotes {
+  border-top-style: solid;
+  /* footnotes.border.top.style */
+  border-top-width: 2px;
+  /* footnotes.border.top.width */
+  border-top-color: #D3D3D3;
+  /* footnotes.border.top.color */
+}
+
+#txglsgeysb .gt_footnote {
+  font-size: 90%;
+  /* footnote.font.size */
+  margin: 0px;
+  padding: 4px;
+  /* footnote.padding */
+}
+
+#txglsgeysb .gt_sourcenotes {
+  border-top-style: solid;
+  /* sourcenotes.border.top.style */
+  border-top-width: 2px;
+  /* sourcenotes.border.top.width */
+  border-top-color: #D3D3D3;
+  /* sourcenotes.border.top.color */
+}
+
+#txglsgeysb .gt_sourcenote {
+  font-size: 90%;
+  /* sourcenote.font.size */
+  padding: 4px;
+  /* sourcenote.padding */
+}
+
+#txglsgeysb .gt_center {
+  text-align: center;
+}
+
+#txglsgeysb .gt_left {
+  text-align: left;
+}
+
+#txglsgeysb .gt_right {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+#txglsgeysb .gt_font_normal {
+  font-weight: normal;
+}
+
+#txglsgeysb .gt_font_bold {
+  font-weight: bold;
+}
+
+#txglsgeysb .gt_font_italic {
+  font-style: italic;
+}
+
+#txglsgeysb .gt_super {
+  font-size: 65%;
+}
+
+#txglsgeysb .gt_footnote_marks {
+  font-style: italic;
+  font-size: 65%;
+}
+</style>
+<div id="txglsgeysb" style="overflow-x:auto;overflow-y:auto;width:auto;height:auto;"><table class="gt_table">
+  <thead>
+    <tr>
+      <th colspan="9" class="gt_heading gt_title gt_font_normal gt_center gt_bottom_border" style>Numeric Variables</th>
+    </tr>
+    
+  </thead>
+  <tr>
+    <th class="gt_col_heading gt_columns_bottom_border gt_columns_top_border gt_left" rowspan="1" colspan="1">variable</th>
+    <th class="gt_col_heading gt_columns_bottom_border gt_columns_top_border gt_left" rowspan="1" colspan="1">mean</th>
+    <th class="gt_col_heading gt_columns_bottom_border gt_columns_top_border gt_left" rowspan="1" colspan="1">sd</th>
+    <th class="gt_col_heading gt_columns_bottom_border gt_columns_top_border gt_left" rowspan="1" colspan="1">p0</th>
+    <th class="gt_col_heading gt_columns_bottom_border gt_columns_top_border gt_left" rowspan="1" colspan="1">p25</th>
+    <th class="gt_col_heading gt_columns_bottom_border gt_columns_top_border gt_left" rowspan="1" colspan="1">p50</th>
+    <th class="gt_col_heading gt_columns_bottom_border gt_columns_top_border gt_left" rowspan="1" colspan="1">p75</th>
+    <th class="gt_col_heading gt_columns_bottom_border gt_columns_top_border gt_left" rowspan="1" colspan="1">p100</th>
+    <th class="gt_col_heading gt_columns_bottom_border gt_columns_top_border gt_left" rowspan="1" colspan="1">hist</th>
+  </tr>
+  <body class="gt_table_body">
+    <tr>
+      <td class="gt_row gt_left">aum</td>
+      <td class="gt_row gt_left">439.19  </td>
+      <td class="gt_row gt_left">1424.57  </td>
+      <td class="gt_row gt_left">    0.05</td>
+      <td class="gt_row gt_left">19.47  </td>
+      <td class="gt_row gt_left">85.12 </td>
+      <td class="gt_row gt_left">337.62 </td>
+      <td class="gt_row gt_left">30203.09 </td>
+      <td class="gt_row gt_left">▇▁▁▁▁▁▁▁</td>
+    </tr>
+    <tr>
+      <td class="gt_row gt_left gt_striped">management_fee_in_percent</td>
+      <td class="gt_row gt_left gt_striped">  0.0032</td>
+      <td class="gt_row gt_left gt_striped">   0.002 </td>
+      <td class="gt_row gt_left gt_striped">4e-04   </td>
+      <td class="gt_row gt_left gt_striped"> 0.0018</td>
+      <td class="gt_row gt_left gt_striped"> 0.003</td>
+      <td class="gt_row gt_left gt_striped">  0.004</td>
+      <td class="gt_row gt_left gt_striped">    0.014</td>
+      <td class="gt_row gt_left gt_striped">▇▇▃▂▁▁▁▁</td>
+    </tr>
+    <tr>
+      <td class="gt_row gt_left">max_spread</td>
+      <td class="gt_row gt_left">  0.021 </td>
+      <td class="gt_row gt_left">   0.0097</td>
+      <td class="gt_row gt_left">5e-04   </td>
+      <td class="gt_row gt_left"> 0.015 </td>
+      <td class="gt_row gt_left"> 0.02 </td>
+      <td class="gt_row gt_left">  0.03 </td>
+      <td class="gt_row gt_left">    0.1  </td>
+      <td class="gt_row gt_left">▂▇▅▁▁▁▁▁</td>
+    </tr>
+    <tr>
+      <td class="gt_row gt_left gt_striped">order_book_turnover_mn</td>
+      <td class="gt_row gt_left gt_striped">  6.98  </td>
+      <td class="gt_row gt_left gt_striped">  29.44  </td>
+      <td class="gt_row gt_left gt_striped">    0   </td>
+      <td class="gt_row gt_left gt_striped"> 0.26  </td>
+      <td class="gt_row gt_left gt_striped"> 1.24 </td>
+      <td class="gt_row gt_left gt_striped">  4.99 </td>
+      <td class="gt_row gt_left gt_striped">  876.54 </td>
+      <td class="gt_row gt_left gt_striped">▇▁▁▁▁▁▁▁</td>
+    </tr>
+    <tr>
+      <td class="gt_row gt_left">ter</td>
+      <td class="gt_row gt_left">  0.0032</td>
+      <td class="gt_row gt_left">   0.002 </td>
+      <td class="gt_row gt_left">4e-04   </td>
+      <td class="gt_row gt_left"> 0.0018</td>
+      <td class="gt_row gt_left"> 0.003</td>
+      <td class="gt_row gt_left">  0.004</td>
+      <td class="gt_row gt_left">    0.014</td>
+      <td class="gt_row gt_left">▇▇▃▂▁▁▁▁</td>
+    </tr>
+    <tr>
+      <td class="gt_row gt_left gt_striped">xlm_100k</td>
+      <td class="gt_row gt_left gt_striped"> 28.19  </td>
+      <td class="gt_row gt_left gt_striped">  47.25  </td>
+      <td class="gt_row gt_left gt_striped">    0.88</td>
+      <td class="gt_row gt_left gt_striped">11.38  </td>
+      <td class="gt_row gt_left gt_striped">20.19 </td>
+      <td class="gt_row gt_left gt_striped"> 30.85 </td>
+      <td class="gt_row gt_left gt_striped">  702.66 </td>
+      <td class="gt_row gt_left gt_striped">▇▁▁▁▁▁▁▁</td>
+    </tr>
+  </body>
+  
+  
+</table></div>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>## R version 3.5.2 (2018-12-20)
+## Platform: x86_64-apple-darwin15.6.0 (64-bit)
+## Running under: macOS Mojave 10.14.6
+## 
+## Matrix products: default
+## BLAS: /Library/Frameworks/R.framework/Versions/3.5/Resources/lib/libRblas.0.dylib
+## LAPACK: /Library/Frameworks/R.framework/Versions/3.5/Resources/lib/libRlapack.dylib
+## 
+## locale:
+## [1] de_DE.UTF-8/de_DE.UTF-8/de_DE.UTF-8/C/de_DE.UTF-8/de_DE.UTF-8
+## 
+## attached base packages:
+## [1] stats     graphics  grDevices utils     datasets  methods   base     
+## 
+## other attached packages:
+##  [1] gt_0.1.0                   skimr_1.0.7               
+##  [3] tidyquant_0.5.6            forcats_0.4.0             
+##  [5] purrr_0.3.2                readr_1.3.1               
+##  [7] tidyr_0.8.3                tibble_2.1.3              
+##  [9] tidyverse_1.2.1            quantmod_0.4-15           
+## [11] TTR_0.23-4                 PerformanceAnalytics_1.5.3
+## [13] xts_0.11-2                 zoo_1.8-6                 
+## [15] lubridate_1.7.4            DataExplorer_0.8.0        
+## [17] ggplot2_3.2.1              janitor_1.2.0             
+## [19] stringr_1.4.0              readxl_1.3.1              
+## [21] dplyr_0.8.3                magrittr_1.5              
+## 
+## loaded via a namespace (and not attached):
+##  [1] httr_1.4.1        sass_0.1.2.1      jsonlite_1.6     
+##  [4] here_0.1          modelr_0.1.5      assertthat_0.2.1 
+##  [7] cellranger_1.1.0  yaml_2.2.0        pillar_1.4.2     
+## [10] backports_1.1.4   lattice_0.20-38   glue_1.3.1       
+## [13] quadprog_1.5-7    digest_0.6.20     checkmate_1.9.4  
+## [16] rvest_0.3.4       snakecase_0.11.0  colorspace_1.4-1 
+## [19] plyr_1.8.4        htmltools_0.3.6   pkgconfig_2.0.2  
+## [22] broom_0.5.2       haven_2.1.1       bookdown_0.13    
+## [25] scales_1.0.0      generics_0.0.2    withr_2.1.2      
+## [28] lazyeval_0.2.2    cli_1.1.0         crayon_1.3.4     
+## [31] evaluate_0.14     fansi_0.4.0       nlme_3.1-141     
+## [34] xml2_1.2.2        blogdown_0.15     tools_3.5.2      
+## [37] data.table_1.12.2 hms_0.5.1         munsell_0.5.0    
+## [40] networkD3_0.4     compiler_3.5.2    rlang_0.4.0      
+## [43] grid_3.5.2        rstudioapi_0.10   htmlwidgets_1.3  
+## [46] igraph_1.2.4.1    labeling_0.3      rmarkdown_1.15   
+## [49] gtable_0.3.0      curl_4.0          reshape2_1.4.3   
+## [52] R6_2.4.0          gridExtra_2.3     knitr_1.24       
+## [55] zeallot_0.1.0     utf8_1.1.4        rprojroot_1.3-2  
+## [58] Quandl_2.10.0     stringi_1.4.3     parallel_3.5.2   
+## [61] Rcpp_1.0.2        vctrs_0.2.0       tidyselect_0.2.5 
+## [64] xfun_0.9</code></pre>
+</div>

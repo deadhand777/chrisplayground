@@ -1,0 +1,185 @@
+---
+title: German ETF Landscape Part I
+draft: false
+author: Chris Schulz
+date: '2019-09-19'
+slug: german-etf-landscape-part-i
+categories: []
+tags:
+  - ETF
+thumbnailImagePosition: left
+thumbnailImage: https://www.biallo.de/fileadmin/_processed_/3/b/ETFScreen_Carlos_Amarillo_shu_faedb81b35.jpg
+metaAlignment: center
+coverMeta: out
+---
+
+![Source: Boerse Frankfurt](https://cms.boerse-frankfurt.de/bf_files/Bilder/Thementexte/scrabble-etf-975x198.jpg)
+
+# Structure
+
+This is the first article of a series of posts related to Exchange Traded Funds (ETFs).
+
+# Motivation
+
+I have encountered tremendous interest in this topic from various people without a financial background who assess long-term and low frequent investment opportunities.
+
+# Purpose
+
+This initial post will cover key ETF characteristics and terminology. Further, it presents an overview of available ETFs for german domiciled private investors.
+
+
+# Terminology
+
+## Exchange Traded Fund (ETF)
+
+An ETF is a **basket of securities** that typically track a specific market index and each ETF is **traded at stock exchanges**. 
+
+The key to understanding the unique structure of ETFs is understanding the underlying core concept called **Creation/Redemption Mechanism**. 
+
+The crucial player in the entire **Creation/Redemption Mechanism** is the so-called **Authorised Participant (AP)**. Let's introduce **AP** first.
+
+### Authorised Participant (AP)
+
+An **AP** is an entity chosen by an ETF's sponsor to undertake the responsibility of obtaining the underlying assets needed to create an ETF. 
+
+**APs** are the only players with the permission to generate new ETF shares or to redeem ETF shares. 
+
+**APs** are typically large institutional organizations, such as market makers. 
+
+
+### Creation/Redemption Mechanism
+
+The process takes place in the **primary market** between the ETF itself and the **AP**.
+
+**Creation** of shares happens when new investments are made to the ETF, and the ETF issues shares that will trade on the exchange with existing shares.
+
+**Redemption** of shares is when shares are exchanged for their cash value with the ETF.
+
+<p align="center">
+![Source: RBA](/post/2019-09-19-german-etf-landscape-part-i_files/rba.gif){width=800px height=350px}
+</p>
+
+The *AP* acts in case of arbitrage opportunities when the value of the ETF shares and the value of the underlying **basket of securities** differ in prices. This ensures that ETFs are traded at **Fair Value**.
+
+In a nutshell, the beauty of this mechanism is:
+
+- removing real costs
+- improving tax efficiency
+- increasing transparency
+- enhancing liquidity
+- fascilitating access to complicated underlying portfolios
+
+
+The video below illustrates how the ETF **Creation/Redemption Mechanism** works:
+
+
+
+```{r video, eval=TRUE, echo=FALSE}
+blogdown::shortcode("youtube", "2-Voq-ivplg")
+```
+
+Alright, let's apply the theory with real world data! 
+
+# XETRA ETF Universe
+
+XETRA is the reference market for German equities and **ETFs**. The good news is that XETRA publishes an overview of all traded ETFs on regular basis. The bad news is that their APIs are currently not free of charge for usage.
+
+```{r libs, echo=TRUE, warning=FALSE, message=FALSE}
+library(magrittr)
+library(dplyr)
+library(readxl)
+library(stringr)
+library(janitor)
+library(ggplot2)
+library(DataExplorer)
+library(tidyquant)
+library(skimr)
+library(gt)
+```
+
+A complete list of all tradable ETFs is avialable at: [List of tradable ETFs](https://www.xetra.com/xetra-en/instruments/etf-exchange-traded-funds/list-of-tradable-etfs). 
+
+Let's download the data and take a look at it:
+
+```{r, warning=FALSE, message=FALSE}
+import.xetra <- function(url = url) {
+  # imports information on all tradable etfs on xetra
+  
+  download.file(url = url, destfile = here::here('resources', 'xetra.xls'))
+  
+  df <- readxl::read_excel(here::here('resources', 'xetra.xls')) %>% 
+    janitor::clean_names() %>% 
+    janitor::remove_empty(c('rows', 'cols')) %>% 
+    dplyr::mutate(max_spread = (stringr::str_remove_all(max_spread, '%'))) %>%
+    dplyr::mutate_at(.vars = c('max_spread', 'order_book_turnover_mn', 'au_m_mn'),
+                     .funs = stringr::str_replace_all, pattern = ',', replacement = '.') %>% 
+    dplyr::mutate_at(.vars = c('max_spread', 'order_book_turnover_mn', 'au_m_mn'), .funs = as.double) %>%
+    dplyr::mutate_at(.vars = c('product_family', 'use_of_profits', 'replication_method', 'fund_currency', 'trading_currency'),
+                     .funs = as.factor) %>%
+    dplyr::select(-number, -dplyr::starts_with('i_nav_')) %>%
+    dplyr::rename(symbol = reuters_ric,
+                  etf    = xtf_exchange_traded_funds,
+                  ter    = total_expense_ratio_ter_in_percent,
+                  aum = au_m_mn)
+    
+  
+  print(paste0('Number of ETFs available on XETRA: ', nrow(df)))
+  
+  return(df)
+}
+
+df.xetra <- import.xetra(url = 'https://www.xetra.com/resource/blob/1553442/f8699acd21b27e519e16657cef30e820/data/Master_DataSheet_Download.xls')
+
+df.xetra %>% glimpse()
+```
+
+In total `r nrow(df.xetra)` ETFs are available and their characteristics are described within `r ncol(df.xetra)`.
+
+```{r, ov}
+DataExplorer::plot_intro(data = df.xetra, title = 'Xetra Overview', ggtheme = tidyquant::theme_tq())
+
+```
+
+```{r}
+DataExplorer::plot_missing(data = df.xetra, title = 'Xetra Missing Values', ggtheme = tidyquant::theme_tq())
+
+```
+
+Apart from the attribute *denomination base* all features are nearly complete.
+
+```{r}
+DataExplorer::plot_bar(data = df.xetra %>% select(product_family,
+                                               use_of_profits,
+                                               replication_method,
+                                               fund_currency, trading_currency),
+                       title = 'Frequency Distribution of Discrete Variables',
+                       ggtheme = tidyquant::theme_tq())
+
+```
+
+```{r, warning=FALSE, message=FALSE}
+DataExplorer::plot_histogram(df.xetra, title = 'Histogram of Continuous Variables', ncol = 3, ggtheme = tidyquant::theme_tq())
+
+```
+
+```{r, warning=FALSE, message=FALSE}
+DataExplorer::plot_correlation(df.xetra, type = 'continuous',
+                               title = 'Correlation of Continuous Variables',
+                               ggtheme = tidyquant::theme_tq(),
+                               cor_args = list("use" = "pairwise.complete.obs"))
+```
+
+```{r, warning=FALSE, message=FALSE}
+df.xetra %>%
+  select_if(is.numeric) %>%
+  tidyr::drop_na() %>%
+  skimr::skim_to_wide() %>% 
+  select(-c(type, missing, complete, n)) %>% 
+  gt::gt() %>% 
+  gt::tab_header(title = "Numeric Variables")
+```
+
+
+```{r, session}
+sessionInfo()
+```
