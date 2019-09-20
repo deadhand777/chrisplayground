@@ -2,7 +2,7 @@
 title: German ETF Landscape Part I
 draft: false
 author: Chris Schulz
-date: '2019-09-19'
+date: '2019-09-20'
 slug: german-etf-landscape-part-i
 categories: []
 tags:
