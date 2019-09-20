@@ -84,18 +84,29 @@ Alright, let's apply the theory with real world data!
 
 XETRA is the reference market for German equities and **ETFs**. The good news is that XETRA publishes an overview of all traded ETFs on regular basis. The bad news is that their APIs are currently not free of charge for usage.
 
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(fig.width=12, fig.height=8, 
+                      echo=FALSE, warning=FALSE, message=FALSE)
+```
+
+## Load required Packages
+
 ```{r libs, echo=TRUE, warning=FALSE, message=FALSE}
 library(magrittr)
 library(dplyr)
 library(readxl)
 library(stringr)
 library(janitor)
+library(lubridate)
 library(ggplot2)
 library(DataExplorer)
 library(tidyquant)
 library(skimr)
 library(gt)
+
 ```
+
+## A first glimpse
 
 A complete list of all tradable ETFs is avialable at: [List of tradable ETFs](https://www.xetra.com/xetra-en/instruments/etf-exchange-traded-funds/list-of-tradable-etfs). 
 
@@ -162,12 +173,18 @@ DataExplorer::plot_histogram(df.xetra, title = 'Histogram of Continuous Variable
 
 ```
 
+## Correlation
+
 ```{r, warning=FALSE, message=FALSE}
 DataExplorer::plot_correlation(df.xetra, type = 'continuous',
                                title = 'Correlation of Continuous Variables',
                                ggtheme = tidyquant::theme_tq(),
                                cor_args = list("use" = "pairwise.complete.obs"))
 ```
+
+Apparently, total expense ratio and management fee are identical. Hence, we can drop one of these columns.
+
+## Numeric characterics
 
 ```{r, warning=FALSE, message=FALSE}
 df.xetra %>%
@@ -179,6 +196,23 @@ df.xetra %>%
   gt::tab_header(title = "Numeric Variables")
 ```
 
+## Listings over time
+
+```{r}
+df.xetra %>% 
+  dplyr::select(listing_date) %>% 
+  dplyr::mutate(year = lubridate::year(listing_date),
+         quarter = lubridate::quarter(listing_date)) %>% 
+  janitor::tabyl(year) %>% 
+  janitor::adorn_totals("row") %>%
+  janitor::adorn_pct_formatting()  %>% 
+  gt::gt() %>% 
+  gt::tab_header(title = 'Listing Date by Year')
+  
+  
+```
+
+That’s it for now. I hope we have laid the foundation for the upcoming analytics and modelling in the posts!
 
 ```{r, session}
 sessionInfo()
