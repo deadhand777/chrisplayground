@@ -1,0 +1,242 @@
+---
+title: German ETF Landscape Part II - OHLC
+author: Chris Schulz
+date: '2019-10-24'
+slug: german-etf-landscape-part-ii-ohlc
+categories: []
+tags:
+  - ETF
+thumbnailImagePosition: left
+thumbnailImage: https://g.foolcdn.com/image/?url=https%3A%2F%2Fg.foolcdn.com%2Feditorial%2Fimages%2F453146%2Fgetty-stock-market-data.jpg&w=700&op=resize
+metaAlignment: center
+coverMeta: out
+---
+
+<center>
+
+![](https://github.com/deadhand777/chrisPlayground/blob/master/static/img/Rplot.jpeg?raw=true)
+</center>
+
+
+# Structure
+
+This is the second article of a series of posts related to Exchange Traded Funds (ETFs).
+In [part I](https://chrisplayground.netlify.com/2019/09/german-etf-landscape-part-i/) we covered key ETF characteristics and terminology. Further, we gained an overview of available ETFs for german domiciled private investors.
+
+# Motivation
+
+I have encountered tremendous interest in this topic from various people without a financial background who assess long-term and low frequent investment opportunities.
+
+# Purpose
+
+This post will focus on obtaining open-source OHLC data for Xetra-listed ETFs. This will help us to start our ETF performance analysis and compare different ETFs with each other.
+
+# Free Data Sources
+
+Plenty of open-source data provides have excellent APIs for a wide range of financial data. Just to mention a few here:
+
+- Yahoo Finance 
+- Alpha Vantage
+- Tiingo 
+- IEX
+- Quandl
+- DBnomics 
+
+The challenge we are currently facing is to find a provider who covers the majority of ETFs listed on XETRA as mentioned in the first post related to this topic [German ETF Landscape Part I](https://chrisplayground.netlify.com/2019/09/german-etf-landscape-part-i/). So far none of the data sources mentioned above give access to our targeted ETF universe. Additionally, if a subset of the desired ETFs is available often the time series are incomplete. This data quality issue is a major concern for analytics.
+
+Fortunately, however, we can overcome both by applying a little bit of web-scraping. [onvista](https://www.onvista.de/) offers access to historic price data for a vast amount of financial securities downloadable as CSV files.
+
+# Onvista 
+
+## Data Access
+
+Let's take the single ETF [ISHARES CORE MSCI WORLD UCITS ETF - USD ACC](https://www.onvista.de/etf/times-sales/ISHARES-CORE-MSCI-WORLD-UCITS-ETF-USD-ACC-ETF-IE00B4L5Y983) as an example.
+
+After a click on **TS/Historie** some time series tables are shown:
+
+<br/>
+<center>
+
+![onvista time series tab](https://github.com/deadhand777/chrisPlayground/blob/master/static/img/IE00B4L5Y983_1.png?raw=true)
+
+</center>
+
+
+We are interested in the OHLC data from the second table.
+
+<br/>
+<center>
+
+![onvista time series tab](https://github.com/deadhand777/chrisPlayground/blob/master/static/img/IE00B4L5Y983_2.png?raw=true)
+
+</center>
+
+After selecting a date in the **bottom-left input field** and a click on **Anzeigen** a link called **CSV herunterladen** pops up. Right-click on **Adresse des Links kopieren** provides access to the data.
+
+<br/>
+<center>
+
+![onvista time series tab](https://github.com/deadhand777/chrisPlayground/blob/master/static/img/IE00B4L5Y983_3.png?raw=true)
+
+</center>
+
+This link looks like this:
+
+https://www.onvista.de/etf/snapshotHistoryCSV?idNotation=109183133&datetimeTzStartRange=23.10.2019&timeSpan=1Y&codeResolution=1D
+
+The composition of these links follows the same pattern for all OHCL downloads. The most important part is the **idNotation** which is a unique identifier for a specif financial security. In our example, it's *109183133*.
+
+Alright, let's obtain the data with R:
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(fig.width=12, fig.height=8, 
+                      echo=FALSE, warning=FALSE, message=FALSE)
+
+```
+
+## Load Libraries
+
+First things first, we load the required libraries.
+
+```{r}
+library(ggplot2)
+library(gt)
+```
+
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+
+library(vroom)
+library(dplyr)
+library(tidyr)
+library(glue)
+library(lubridate)
+library(purrr)
+```
+
+## Single Security
+
+Onvista offers 5 years of history per download. Let's obtain the full 5 years for our MSCI World ETF!
+
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+start.date <- lubridate::today() - lubridate::years(5)
+
+start.date.formated <- paste(lubridate::day(start.date), lubridate::month(start.date), lubridate::year(start.date), sep = '.')
+  
+single.etf <- vroom::vroom(file = glue::glue('https://www.onvista.de/etf/snapshotHistoryCSV?idNotation=109183133&datetimeTzStartRange=',
+                                             start.date.formated,
+                                             '&timeSpan=5Y&codeResolution=1D'),
+                           col_types = list(Datum     = vroom::col_character(include_na = TRUE))) %>% 
+  dplyr::select(-Volumen) %>% 
+  dplyr::mutate(., Datum = lubridate::dmy(Datum)) %>%
+  dplyr::mutate_at(.vars = c('Eröffnung', 
+                             'Hoch', 
+                             'Tief', 
+                             'Schluss'),
+                   .funs = ~round(./100, digits = 3)) %>% 
+  dplyr::rename(., date = Datum, 
+                open = Eröffnung,
+                high = Hoch, 
+                low = Tief,
+                close = Schluss)
+
+single.etf
+```
+
+Excellent, as simple as such and we have received our full 5 years time series for this specific ETF! 
+
+A few notes on the code above:
+
+- **start.date** needs to be converted into German time format first i order to glue the start date into **datetimeTzStartRange** 
+- **Datum** is re-converted from German to international time format
+- Decimals are separated by a comma, not by a dot. Hence, we adjust all price data variables accordingly
+- Renaming is optional
+
+# Multiple Securities
+
+Well, one ETF is a start, however, not sufficient. Therefore, let's create a function that allows us to iterate through a list of ETFs. To do so, I have added the **idNotation** from onvista to [List of Xetra tradable ETFs](https://www.xetra.com/xetra-en/instruments/etf-exchange-traded-funds/list-of-tradable-etfs) from our previous post, filtered for 5 MSCI World ETFs und dropped columns which are not relevant:
+
+<br/>
+```{r}
+etf.list <- readr::read_csv(file = '/Users/chris/r_programming/DemoEtfPortfolio/data/post.csv')
+
+```
+
+```{r, message=FALSE, warning=FALSE}
+etf.list %>% 
+  gt::gt() %>% 
+  gt::tab_header(
+    title = 'MSCI World Example ETFs'
+  )
+```
+
+Let's get the data in a clean format:
+
+```{r, echo=TRUE}
+import.onvista.price.data <- function(df, start.date = lubridate::today() - lubridate::years(5)) {
+  
+  start.date.formated <- paste(lubridate::day(start.date), lubridate::month(start.date), lubridate::year(start.date), sep = '.')
+  
+  df <- df %>%
+    group_nest(etf, idNotation, .key = 'meta') %>%
+    dplyr::mutate(prices.daily = map2(idNotation, start.date.formated,
+                                      ~vroom::vroom(file = glue::glue('https://www.onvista.de/etf/snapshotHistoryCSV?idNotation=',
+                                                                      .x,
+                                                                      '&datetimeTzStartRange=' ,
+                                                                      .y,
+                                                                      '&timeSpan=5Y&codeResolution=1D'),
+                                                                  col_types = list(Datum = vroom::col_character(include_na = TRUE))))) %>% 
+    dplyr::mutate(prices.daily = purrr::map(prices.daily, ~ 
+                                              dplyr::mutate(., Datum = lubridate::dmy(Datum)) %>%
+                                              dplyr::mutate_at(.vars = c('Eröffnung', 'Hoch', 'Tief', 'Schluss'),
+                                                               .funs = ~round(./100, digits = 3)) %>%
+                                              dplyr::rename(., 
+                                                            date = Datum, 
+                                                            open = Eröffnung,
+                                                            high = Hoch, 
+                                                            low = Tief, 
+                                                            close = Schluss, 
+                                                            volumen = Volumen)))
+  
+  return(df)
+}
+
+multiple.etf <- import.onvista.price.data(df = etf.list, start.date = lubridate::today() - lubridate::years(5))
+multiple.etf 
+```
+
+Great, we managed to obtain the OHLC data for each ETF. A few notes:
+- We used *group_nest* to place all metadata into the nested column **meta**
+- The time-series data is stored in the column **price.daily**
+
+Let's look into the column **price.daily**:
+
+```{r}
+multiple.etf %>% select(etf, prices.daily) %>% unnest(prices.daily) 
+```
+
+That’s it for now. After quite a bit of theory in [part I](https://chrisplayground.netlify.com/2019/09/german-etf-landscape-part-i/) we now have the functionality to retrieve high-quality OHLC data. Hence, we can focus on the actual analysis in the upcoming session.
+
+
+```{r}
+multiple.etf %>% 
+  select(etf, prices.daily) %>% 
+  unnest(prices.daily) %>% 
+  ggplot2::ggplot(aes(x = date, y = close, color = etf)) + 
+  ggplot2::geom_line() +
+  scale_x_date(date_breaks = "6 months", date_labels = "%b %y") +
+  ggplot2::facet_wrap(~etf, scales = 'free') + 
+  ggplot2::labs(x = '',
+       y = 'Price') +
+  tidyquant::scale_fill_tq() +
+  tidyquant::scale_color_tq() +
+  tidyquant::theme_tq() +
+  ggplot2::theme(legend.position = 'none',
+        panel.grid.minor = element_blank(),
+        panel.grid.major.y = element_blank())
+```
+
+```{r, session}
+sessionInfo()
+```
+
+

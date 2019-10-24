@@ -1,0 +1,609 @@
+---
+title: German ETF Landscape Part II - OHLC
+author: Chris Schulz
+date: '2019-10-24'
+slug: german-etf-landscape-part-ii-ohlc
+categories: []
+tags:
+  - ETF
+thumbnailImagePosition: left
+thumbnailImage: https://g.foolcdn.com/image/?url=https%3A%2F%2Fg.foolcdn.com%2Feditorial%2Fimages%2F453146%2Fgetty-stock-market-data.jpg&w=700&op=resize
+metaAlignment: center
+coverMeta: out
+---
+
+
+
+<center>
+<img src="https://github.com/deadhand777/chrisPlayground/blob/master/static/img/Rplot.jpeg?raw=true" />
+</center>
+<div id="structure" class="section level1">
+<h1>Structure</h1>
+<p>This is the second article of a series of posts related to Exchange Traded Funds (ETFs).
+In <a href="https://chrisplayground.netlify.com/2019/09/german-etf-landscape-part-i/">part I</a> we covered key ETF characteristics and terminology. Further, we gained an overview of available ETFs for german domiciled private investors.</p>
+</div>
+<div id="motivation" class="section level1">
+<h1>Motivation</h1>
+<p>I have encountered tremendous interest in this topic from various people without a financial background who assess long-term and low frequent investment opportunities.</p>
+</div>
+<div id="purpose" class="section level1">
+<h1>Purpose</h1>
+<p>This post will focus on obtaining open-source OHLC data for Xetra-listed ETFs. This will help us to start our ETF performance analysis and compare different ETFs with each other.</p>
+</div>
+<div id="free-data-sources" class="section level1">
+<h1>Free Data Sources</h1>
+<p>Plenty of open-source data provides have excellent APIs for a wide range of financial data. Just to mention a few here:</p>
+<ul>
+<li>Yahoo Finance</li>
+<li>Alpha Vantage</li>
+<li>Tiingo</li>
+<li>IEX</li>
+<li>Quandl</li>
+<li>DBnomics</li>
+</ul>
+<p>The challenge we are currently facing is to find a provider who covers the majority of ETFs listed on XETRA as mentioned in the first post related to this topic <a href="https://chrisplayground.netlify.com/2019/09/german-etf-landscape-part-i/">German ETF Landscape Part I</a>. So far none of the data sources mentioned above give access to our targeted ETF universe. Additionally, if a subset of the desired ETFs is available often the time series are incomplete. This data quality issue is a major concern for analytics.</p>
+<p>Fortunately, however, we can overcome both by applying a little bit of web-scraping. <a href="https://www.onvista.de/">onvista</a> offers access to historic price data for a vast amount of financial securities downloadable as CSV files.</p>
+</div>
+<div id="onvista" class="section level1">
+<h1>Onvista</h1>
+<div id="data-access" class="section level2">
+<h2>Data Access</h2>
+<p>Let’s take the single ETF <a href="https://www.onvista.de/etf/times-sales/ISHARES-CORE-MSCI-WORLD-UCITS-ETF-USD-ACC-ETF-IE00B4L5Y983">ISHARES CORE MSCI WORLD UCITS ETF - USD ACC</a> as an example.</p>
+<p>After a click on <strong>TS/Historie</strong> some time series tables are shown:</p>
+<br/>
+<center>
+<div class="figure">
+<img src="https://github.com/deadhand777/chrisPlayground/blob/master/static/img/IE00B4L5Y983_1.png?raw=true" alt="onvista time series tab" />
+<p class="caption">onvista time series tab</p>
+</div>
+</center>
+<p>We are interested in the OHLC data from the second table.</p>
+<br/>
+<center>
+<div class="figure">
+<img src="https://github.com/deadhand777/chrisPlayground/blob/master/static/img/IE00B4L5Y983_2.png?raw=true" alt="onvista time series tab" />
+<p class="caption">onvista time series tab</p>
+</div>
+</center>
+<p>After selecting a date in the <strong>bottom-left input field</strong> and a click on <strong>Anzeigen</strong> a link called <strong>CSV herunterladen</strong> pops up. Right-click on <strong>Adresse des Links kopieren</strong> provides access to the data.</p>
+<br/>
+<center>
+<div class="figure">
+<img src="https://github.com/deadhand777/chrisPlayground/blob/master/static/img/IE00B4L5Y983_3.png?raw=true" alt="onvista time series tab" />
+<p class="caption">onvista time series tab</p>
+</div>
+</center>
+<p>This link looks like this:</p>
+<p><a href="https://www.onvista.de/etf/snapshotHistoryCSV?idNotation=109183133&amp;datetimeTzStartRange=23.10.2019&amp;timeSpan=1Y&amp;codeResolution=1D" class="uri">https://www.onvista.de/etf/snapshotHistoryCSV?idNotation=109183133&amp;datetimeTzStartRange=23.10.2019&amp;timeSpan=1Y&amp;codeResolution=1D</a></p>
+<p>The composition of these links follows the same pattern for all OHCL downloads. The most important part is the <strong>idNotation</strong> which is a unique identifier for a specif financial security. In our example, it’s <em>109183133</em>.</p>
+<p>Alright, let’s obtain the data with R:</p>
+</div>
+<div id="load-libraries" class="section level2">
+<h2>Load Libraries</h2>
+<p>First things first, we load the required libraries.</p>
+<pre class="r"><code>library(vroom)
+library(dplyr)
+library(tidyr)
+library(glue)
+library(lubridate)
+library(purrr)</code></pre>
+</div>
+<div id="single-security" class="section level2">
+<h2>Single Security</h2>
+<p>Onvista offers 5 years of history per download. Let’s obtain the full 5 years for our MSCI World ETF!</p>
+<pre class="r"><code>start.date &lt;- lubridate::today() - lubridate::years(5)
+
+start.date.formated &lt;- paste(lubridate::day(start.date), lubridate::month(start.date), lubridate::year(start.date), sep = &#39;.&#39;)
+  
+single.etf &lt;- vroom::vroom(file = glue::glue(&#39;https://www.onvista.de/etf/snapshotHistoryCSV?idNotation=109183133&amp;datetimeTzStartRange=&#39;,
+                                             start.date.formated,
+                                             &#39;&amp;timeSpan=5Y&amp;codeResolution=1D&#39;),
+                           col_types = list(Datum     = vroom::col_character(include_na = TRUE))) %&gt;% 
+  dplyr::select(-Volumen) %&gt;% 
+  dplyr::mutate(., Datum = lubridate::dmy(Datum)) %&gt;%
+  dplyr::mutate_at(.vars = c(&#39;Eröffnung&#39;, 
+                             &#39;Hoch&#39;, 
+                             &#39;Tief&#39;, 
+                             &#39;Schluss&#39;),
+                   .funs = ~round(./100, digits = 3)) %&gt;% 
+  dplyr::rename(., date = Datum, 
+                open = Eröffnung,
+                high = Hoch, 
+                low = Tief,
+                close = Schluss)
+
+single.etf</code></pre>
+<pre><code>## # A tibble: 1,722 x 5
+##    date        open  high   low close
+##    &lt;date&gt;     &lt;dbl&gt; &lt;dbl&gt; &lt;dbl&gt; &lt;dbl&gt;
+##  1 2014-10-24  31.8  31.8  31.5  31.8
+##  2 2014-10-25  31.8  31.8  31.8  31.8
+##  3 2014-10-26  31.8  31.8  31.8  31.8
+##  4 2014-10-27  31.8  32.0  31.5  31.6
+##  5 2014-10-28  31.7  31.9  31.7  31.9
+##  6 2014-10-29  31.9  32.2  31.8  32.2
+##  7 2014-10-30  32.0  32.4  31.9  32.4
+##  8 2014-10-31  32.6  33.2  32.6  33.0
+##  9 2014-11-01  33.2  33.2  33.2  33.2
+## 10 2014-11-02  33.2  33.2  33.2  33.2
+## # … with 1,712 more rows</code></pre>
+<p>Excellent, as simple as such and we have received our full 5 years time series for this specific ETF!</p>
+<p>A few notes on the code above:</p>
+<ul>
+<li><strong>start.date</strong> needs to be converted into German time format first i order to glue the start date into <strong>datetimeTzStartRange</strong></li>
+<li><strong>Datum</strong> is re-converted from German to international time format</li>
+<li>Decimals are separated by a comma, not by a dot. Hence, we adjust all price data variables accordingly</li>
+<li>Renaming is optional</li>
+</ul>
+</div>
+</div>
+<div id="multiple-securities" class="section level1">
+<h1>Multiple Securities</h1>
+<p>Well, one ETF is a start, however, not sufficient. Therefore, let’s create a function that allows us to iterate through a list of ETFs. To do so, I have added the <strong>idNotation</strong> from onvista to <a href="https://www.xetra.com/xetra-en/instruments/etf-exchange-traded-funds/list-of-tradable-etfs">List of Xetra tradable ETFs</a> from our previous post, filtered for 5 MSCI World ETFs und dropped columns which are not relevant:</p>
+<p><br/></p>
+<style>html {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Helvetica Neue', 'Fira Sans', 'Droid Sans', Arial, sans-serif;
+}
+
+#kryvlefowj .gt_table {
+  display: table;
+  border-collapse: collapse;
+  margin-left: auto;
+  margin-right: auto;
+  color: #333333;
+  font-size: 16px;
+  background-color: #FFFFFF;
+  /* table.background.color */
+  width: auto;
+  /* table.width */
+  border-top-style: solid;
+  /* table.border.top.style */
+  border-top-width: 2px;
+  /* table.border.top.width */
+  border-top-color: #A8A8A8;
+  /* table.border.top.color */
+  border-bottom-style: solid;
+  /* table.border.bottom.style */
+  border-bottom-width: 2px;
+  /* table.border.bottom.width */
+  border-bottom-color: #A8A8A8;
+  /* table.border.bottom.color */
+}
+
+#kryvlefowj .gt_heading {
+  background-color: #FFFFFF;
+  /* heading.background.color */
+  border-bottom-color: #FFFFFF;
+}
+
+#kryvlefowj .gt_title {
+  color: #333333;
+  font-size: 125%;
+  /* heading.title.font.size */
+  padding-top: 4px;
+  /* heading.top.padding - not yet used */
+  padding-bottom: 4px;
+  border-bottom-color: #FFFFFF;
+  border-bottom-width: 0;
+}
+
+#kryvlefowj .gt_subtitle {
+  color: #333333;
+  font-size: 85%;
+  /* heading.subtitle.font.size */
+  padding-top: 0;
+  padding-bottom: 4px;
+  /* heading.bottom.padding - not yet used */
+  border-top-color: #FFFFFF;
+  border-top-width: 0;
+}
+
+#kryvlefowj .gt_bottom_border {
+  border-bottom-style: solid;
+  /* heading.border.bottom.style */
+  border-bottom-width: 2px;
+  /* heading.border.bottom.width */
+  border-bottom-color: #D3D3D3;
+  /* heading.border.bottom.color */
+}
+
+#kryvlefowj .gt_column_spanner {
+  border-bottom-style: solid;
+  border-bottom-width: 2px;
+  border-bottom-color: #D3D3D3;
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+#kryvlefowj .gt_col_heading {
+  color: #333333;
+  background-color: #FFFFFF;
+  /* column_labels.background.color */
+  font-size: 16px;
+  /* column_labels.font.size */
+  font-weight: initial;
+  /* column_labels.font.weight */
+  vertical-align: middle;
+  padding: 5px;
+  margin: 10px;
+  overflow-x: hidden;
+}
+
+#kryvlefowj .gt_columns_top_border {
+  border-top-style: solid;
+  border-top-width: 2px;
+  border-top-color: #D3D3D3;
+}
+
+#kryvlefowj .gt_columns_bottom_border {
+  border-bottom-style: solid;
+  border-bottom-width: 2px;
+  border-bottom-color: #D3D3D3;
+}
+
+#kryvlefowj .gt_sep_right {
+  border-right: 5px solid #FFFFFF;
+}
+
+#kryvlefowj .gt_group_heading {
+  padding: 8px;
+  /* row_group.padding */
+  color: #333333;
+  background-color: #FFFFFF;
+  /* row_group.background.color */
+  font-size: 16px;
+  /* row_group.font.size */
+  font-weight: initial;
+  /* row_group.font.weight */
+  border-top-style: solid;
+  /* row_group.border.top.style */
+  border-top-width: 2px;
+  /* row_group.border.top.width */
+  border-top-color: #D3D3D3;
+  /* row_group.border.top.color */
+  border-bottom-style: solid;
+  /* row_group.border.bottom.style */
+  border-bottom-width: 2px;
+  /* row_group.border.bottom.width */
+  border-bottom-color: #D3D3D3;
+  /* row_group.border.bottom.color */
+  vertical-align: middle;
+}
+
+#kryvlefowj .gt_empty_group_heading {
+  padding: 0.5px;
+  color: #333333;
+  background-color: #FFFFFF;
+  /* row_group.background.color */
+  font-size: 16px;
+  /* row_group.font.size */
+  font-weight: initial;
+  /* row_group.font.weight */
+  border-top-style: solid;
+  /* row_group.border.top.style */
+  border-top-width: 2px;
+  /* row_group.border.top.width */
+  border-top-color: #D3D3D3;
+  /* row_group.border.top.color */
+  border-bottom-style: solid;
+  /* row_group.border.bottom.style */
+  border-bottom-width: 2px;
+  /* row_group.border.bottom.width */
+  border-bottom-color: #D3D3D3;
+  /* row_group.border.bottom.color */
+  vertical-align: middle;
+}
+
+#kryvlefowj .gt_striped {
+  background-color: #8080800D;
+}
+
+#kryvlefowj .gt_from_md > :first-child {
+  margin-top: 0;
+}
+
+#kryvlefowj .gt_from_md > :last-child {
+  margin-bottom: 0;
+}
+
+#kryvlefowj .gt_row {
+  padding: 8px;
+  /* row.padding */
+  margin: 10px;
+  border-top-style: solid;
+  border-top-width: 1px;
+  border-top-color: #D3D3D3;
+  vertical-align: middle;
+  overflow-x: hidden;
+}
+
+#kryvlefowj .gt_stub {
+  border-right-style: solid;
+  border-right-width: 2px;
+  border-right-color: #D3D3D3;
+  padding-left: 12px;
+}
+
+#kryvlefowj .gt_summary_row {
+  color: #333333;
+  background-color: #FFFFFF;
+  /* summary_row.background.color */
+  padding: 8px;
+  /* summary_row.padding */
+  text-transform: inherit;
+  /* summary_row.text_transform */
+}
+
+#kryvlefowj .gt_grand_summary_row {
+  color: #333333;
+  background-color: #FFFFFF;
+  /* grand_summary_row.background.color */
+  padding: 8px;
+  /* grand_summary_row.padding */
+  text-transform: inherit;
+  /* grand_summary_row.text_transform */
+}
+
+#kryvlefowj .gt_first_summary_row {
+  border-top-style: solid;
+  border-top-width: 2px;
+  border-top-color: #D3D3D3;
+}
+
+#kryvlefowj .gt_first_grand_summary_row {
+  border-top-style: double;
+  border-top-width: 6px;
+  border-top-color: #D3D3D3;
+}
+
+#kryvlefowj .gt_table_body {
+  border-top-style: solid;
+  /* table_body.border.top.style */
+  border-top-width: 2px;
+  /* table_body.border.top.width */
+  border-top-color: #D3D3D3;
+  /* table_body.border.top.color */
+  border-bottom-style: solid;
+  /* table_body.border.bottom.style */
+  border-bottom-width: 2px;
+  /* table_body.border.bottom.width */
+  border-bottom-color: #D3D3D3;
+  /* table_body.border.bottom.color */
+}
+
+#kryvlefowj .gt_footnotes {
+  border-top-style: solid;
+  /* footnotes.border.top.style */
+  border-top-width: 2px;
+  /* footnotes.border.top.width */
+  border-top-color: #D3D3D3;
+  /* footnotes.border.top.color */
+}
+
+#kryvlefowj .gt_footnote {
+  font-size: 90%;
+  /* footnote.font.size */
+  margin: 0px;
+  padding: 4px;
+  /* footnote.padding */
+}
+
+#kryvlefowj .gt_sourcenotes {
+  border-top-style: solid;
+  /* sourcenotes.border.top.style */
+  border-top-width: 2px;
+  /* sourcenotes.border.top.width */
+  border-top-color: #D3D3D3;
+  /* sourcenotes.border.top.color */
+}
+
+#kryvlefowj .gt_sourcenote {
+  font-size: 90%;
+  /* sourcenote.font.size */
+  padding: 4px;
+  /* sourcenote.padding */
+}
+
+#kryvlefowj .gt_center {
+  text-align: center;
+}
+
+#kryvlefowj .gt_left {
+  text-align: left;
+}
+
+#kryvlefowj .gt_right {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+#kryvlefowj .gt_font_normal {
+  font-weight: normal;
+}
+
+#kryvlefowj .gt_font_bold {
+  font-weight: bold;
+}
+
+#kryvlefowj .gt_font_italic {
+  font-style: italic;
+}
+
+#kryvlefowj .gt_super {
+  font-size: 65%;
+}
+
+#kryvlefowj .gt_footnote_marks {
+  font-style: italic;
+  font-size: 65%;
+}
+</style>
+<div id="kryvlefowj" style="overflow-x:auto;overflow-y:auto;width:auto;height:auto;"><table class="gt_table">
+  <thead>
+    <tr>
+      <th colspan="5" class="gt_heading gt_title gt_font_normal gt_center gt_bottom_border" style>MSCI World Example ETFs</th>
+    </tr>
+    
+  </thead>
+  <tr>
+    <th class="gt_col_heading gt_columns_bottom_border gt_columns_top_border gt_left" rowspan="1" colspan="1">etf</th>
+    <th class="gt_col_heading gt_columns_bottom_border gt_columns_top_border gt_left" rowspan="1" colspan="1">benchmark</th>
+    <th class="gt_col_heading gt_columns_bottom_border gt_columns_top_border gt_left" rowspan="1" colspan="1">isin</th>
+    <th class="gt_col_heading gt_columns_bottom_border gt_columns_top_border gt_center" rowspan="1" colspan="1">idNotation</th>
+    <th class="gt_col_heading gt_columns_bottom_border gt_columns_top_border gt_center" rowspan="1" colspan="1">ter</th>
+  </tr>
+  <body class="gt_table_body">
+    <tr>
+      <td class="gt_row gt_left">Amundi MSCI World UCITS ETF</td>
+      <td class="gt_row gt_left">MSCI World Index</td>
+      <td class="gt_row gt_left">LU1681043599</td>
+      <td class="gt_row gt_right">215821385</td>
+      <td class="gt_row gt_right">0.0038</td>
+    </tr>
+    <tr>
+      <td class="gt_row gt_left gt_striped">Invesco MSCI World UCITS ETF Acc</td>
+      <td class="gt_row gt_left gt_striped">MSCI World Index</td>
+      <td class="gt_row gt_left gt_striped">IE00B60SX394</td>
+      <td class="gt_row gt_right gt_striped">56136194</td>
+      <td class="gt_row gt_right gt_striped">0.0019</td>
+    </tr>
+    <tr>
+      <td class="gt_row gt_left">iShares Core MSCI World UCITS ETF USD (Acc)</td>
+      <td class="gt_row gt_left">MSCI World Index</td>
+      <td class="gt_row gt_left">IE00B4L5Y983</td>
+      <td class="gt_row gt_right">109183133</td>
+      <td class="gt_row gt_right">0.0020</td>
+    </tr>
+    <tr>
+      <td class="gt_row gt_left gt_striped">iShares MSCI World EUR Hedged UCITS ETF (Acc)</td>
+      <td class="gt_row gt_left gt_striped">MSCI World Index</td>
+      <td class="gt_row gt_left gt_striped">IE00B441G979</td>
+      <td class="gt_row gt_right gt_striped">164928035</td>
+      <td class="gt_row gt_right gt_striped">0.0055</td>
+    </tr>
+    <tr>
+      <td class="gt_row gt_left">Xtrackers MSCI World Swap UCITS ETF - 1C</td>
+      <td class="gt_row gt_left">MSCI World Index</td>
+      <td class="gt_row gt_left">LU0274208692</td>
+      <td class="gt_row gt_right">56136193</td>
+      <td class="gt_row gt_right">0.0045</td>
+    </tr>
+    <tr>
+      <td class="gt_row gt_left gt_striped">Xtrackers MSCI World UCITS ETF 1C</td>
+      <td class="gt_row gt_left gt_striped">MSCI World Index</td>
+      <td class="gt_row gt_left gt_striped">IE00BJ0KDQ92</td>
+      <td class="gt_row gt_right gt_striped">125422954</td>
+      <td class="gt_row gt_right gt_striped">0.0019</td>
+    </tr>
+  </body>
+  
+  
+</table></div>
+<p>Let’s get the data in a clean format:</p>
+<pre class="r"><code>import.onvista.price.data &lt;- function(df, start.date = lubridate::today() - lubridate::years(5)) {
+  
+  start.date.formated &lt;- paste(lubridate::day(start.date), lubridate::month(start.date), lubridate::year(start.date), sep = &#39;.&#39;)
+  
+  df &lt;- df %&gt;%
+    group_nest(etf, idNotation, .key = &#39;meta&#39;) %&gt;%
+    dplyr::mutate(prices.daily = map2(idNotation, start.date.formated,
+                                      ~vroom::vroom(file = glue::glue(&#39;https://www.onvista.de/etf/snapshotHistoryCSV?idNotation=&#39;,
+                                                                      .x,
+                                                                      &#39;&amp;datetimeTzStartRange=&#39; ,
+                                                                      .y,
+                                                                      &#39;&amp;timeSpan=5Y&amp;codeResolution=1D&#39;),
+                                                                  col_types = list(Datum = vroom::col_character(include_na = TRUE))))) %&gt;% 
+    dplyr::mutate(prices.daily = purrr::map(prices.daily, ~ 
+                                              dplyr::mutate(., Datum = lubridate::dmy(Datum)) %&gt;%
+                                              dplyr::mutate_at(.vars = c(&#39;Eröffnung&#39;, &#39;Hoch&#39;, &#39;Tief&#39;, &#39;Schluss&#39;),
+                                                               .funs = ~round(./100, digits = 3)) %&gt;%
+                                              dplyr::rename(., 
+                                                            date = Datum, 
+                                                            open = Eröffnung,
+                                                            high = Hoch, 
+                                                            low = Tief, 
+                                                            close = Schluss, 
+                                                            volumen = Volumen)))
+  
+  return(df)
+}
+
+multiple.etf &lt;- import.onvista.price.data(df = etf.list, start.date = lubridate::today() - lubridate::years(5))
+multiple.etf </code></pre>
+<pre><code>## # A tibble: 6 x 4
+##   etf                             idNotation meta         prices.daily     
+##   &lt;chr&gt;                                &lt;dbl&gt; &lt;list&gt;       &lt;list&gt;           
+## 1 Amundi MSCI World UCITS ETF      215821385 &lt;tibble [1 … &lt;tibble [525 × 6…
+## 2 Invesco MSCI World UCITS ETF A…   56136194 &lt;tibble [1 … &lt;tibble [1,725 ×…
+## 3 iShares Core MSCI World UCITS …  109183133 &lt;tibble [1 … &lt;tibble [1,722 ×…
+## 4 iShares MSCI World EUR Hedged …  164928035 &lt;tibble [1 … &lt;tibble [1,150 ×…
+## 5 Xtrackers MSCI World Swap UCIT…   56136193 &lt;tibble [1 … &lt;tibble [1,725 ×…
+## 6 Xtrackers MSCI World UCITS ETF…  125422954 &lt;tibble [1 … &lt;tibble [1,607 ×…</code></pre>
+<p>Great, we managed to obtain the OHLC data for each ETF. A few notes:
+- We used <em>group_nest</em> to place all metadata into the nested column <strong>meta</strong>
+- The time-series data is stored in the column <strong>price.daily</strong></p>
+<p>Let’s look into the column <strong>price.daily</strong>:</p>
+<pre><code>## # A tibble: 8,454 x 7
+##    etf                         date        open  high   low close volumen
+##    &lt;chr&gt;                       &lt;date&gt;     &lt;dbl&gt; &lt;dbl&gt; &lt;dbl&gt; &lt;dbl&gt;   &lt;dbl&gt;
+##  1 Amundi MSCI World UCITS ETF 2018-04-18  241.  247.  240.  244.       0
+##  2 Amundi MSCI World UCITS ETF 2018-04-19  244.  246.  243.  244.       0
+##  3 Amundi MSCI World UCITS ETF 2018-04-20  244.  247.  243.  244.       0
+##  4 Amundi MSCI World UCITS ETF 2018-04-21  243.  244.  243.  244.       0
+##  5 Amundi MSCI World UCITS ETF 2018-04-22  244.  244.  244.  244.       0
+##  6 Amundi MSCI World UCITS ETF 2018-04-23  244.  247.  244.  244.      80
+##  7 Amundi MSCI World UCITS ETF 2018-04-24  245.  248.  241.  243.    1730
+##  8 Amundi MSCI World UCITS ETF 2018-04-25  243.  244.  241.  242.      20
+##  9 Amundi MSCI World UCITS ETF 2018-04-26  242.  248.  242.  245.       2
+## 10 Amundi MSCI World UCITS ETF 2018-04-27  244.  249.  244.  246.      34
+## # … with 8,444 more rows</code></pre>
+<p>That’s it for now. After quite a bit of theory in <a href="https://chrisplayground.netlify.com/2019/09/german-etf-landscape-part-i/">part I</a> we now have the functionality to retrieve high-quality OHLC data. Hence, we can focus on the actual analysis in the upcoming session.</p>
+<p><img src="/post/2019-10-24-german-etf-landscape-part-ii-ohlc_files/figure-html/unnamed-chunk-8-1.png" width="1152" /></p>
+<pre><code>## R version 3.6.1 (2019-07-05)
+## Platform: x86_64-apple-darwin15.6.0 (64-bit)
+## Running under: macOS Mojave 10.14.6
+## 
+## Matrix products: default
+## BLAS:   /Library/Frameworks/R.framework/Versions/3.6/Resources/lib/libRblas.0.dylib
+## LAPACK: /Library/Frameworks/R.framework/Versions/3.6/Resources/lib/libRlapack.dylib
+## 
+## locale:
+## [1] de_DE.UTF-8/de_DE.UTF-8/de_DE.UTF-8/C/de_DE.UTF-8/de_DE.UTF-8
+## 
+## attached base packages:
+## [1] stats     graphics  grDevices utils     datasets  methods   base     
+## 
+## other attached packages:
+## [1] purrr_0.3.3     lubridate_1.7.4 glue_1.3.1      tidyr_1.0.0    
+## [5] dplyr_0.8.3     vroom_1.0.2     gt_0.1.0        ggplot2_3.2.1  
+## 
+## loaded via a namespace (and not attached):
+##  [1] zoo_1.8-6                  tidyselect_0.2.5          
+##  [3] xfun_0.10                  lattice_0.20-38           
+##  [5] colorspace_1.4-1           vctrs_0.2.0               
+##  [7] htmltools_0.4.0            yaml_2.2.0                
+##  [9] utf8_1.1.4                 rlang_0.4.0               
+## [11] pillar_1.4.2               withr_2.1.2               
+## [13] TTR_0.23-5                 lifecycle_0.1.0           
+## [15] quantmod_0.4-15            stringr_1.4.0             
+## [17] Quandl_2.10.0              munsell_0.5.0             
+## [19] blogdown_0.16              gtable_0.3.0              
+## [21] evaluate_0.14              labeling_0.3              
+## [23] knitr_1.25                 parallel_3.6.1            
+## [25] curl_4.2                   fansi_0.4.0               
+## [27] PerformanceAnalytics_1.5.3 xts_0.11-2                
+## [29] Rcpp_1.0.2                 readr_1.3.1               
+## [31] backports_1.1.5            scales_1.0.0              
+## [33] checkmate_1.9.4            tidyquant_0.5.8           
+## [35] jsonlite_1.6               hms_0.5.1                 
+## [37] digest_0.6.22              stringi_1.4.3             
+## [39] bookdown_0.14              grid_3.6.1                
+## [41] quadprog_1.5-7             cli_1.1.0                 
+## [43] tools_3.6.1                magrittr_1.5              
+## [45] sass_0.1.2.1               lazyeval_0.2.2            
+## [47] tibble_2.1.3               crayon_1.3.4              
+## [49] pkgconfig_2.0.3            zeallot_0.1.0             
+## [51] httr_1.4.1                 assertthat_0.2.1          
+## [53] rmarkdown_1.16             R6_2.4.0                  
+## [55] compiler_3.6.1</code></pre>
+</div>
